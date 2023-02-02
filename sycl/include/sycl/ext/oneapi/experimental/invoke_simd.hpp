@@ -87,10 +87,19 @@ using native_fixed_size = typename std::experimental::__simd_abi<
 template <class T, int N>
 using simd = std::experimental::simd<T, simd_abi::native_fixed_size<T, N>>;
 
+template <class T, int N>
+struct simd_mask_impl {
+  using type = std::experimental::simd_mask<T, simd_abi::native_fixed_size<T, N>>;
+};
+template<int N>
+struct simd_mask_impl<bool, N> {
+  using type = simd_mask_impl<char, N>::type;
+};
+
 // The SIMD mask object type.
 template <class T, int N>
 using simd_mask =
-    std::experimental::simd_mask<T, simd_abi::native_fixed_size<T, N>>;
+    simd_mask_impl<T, N>::type;
 
 // --- Helpers
 namespace detail {
@@ -115,6 +124,10 @@ template <class T, int N>
 struct spmd2simd<T, N, std::enable_if_t<std::is_arithmetic_v<T>>> {
   using type = simd<T, N>;
 };
+template<int N>
+struct spmd2simd<bool, N> {
+  using type = simd_mask<bool, N>;
+};
 
 // This structure performs the SIMD-to-SPMD return type conversion as defined
 // by the spec.
@@ -127,6 +140,11 @@ template <class T> struct simd2spmd<uniform<T>> {
 template <class T, int N> struct simd2spmd<simd<T, N>> {
   using type = T;
 };
+
+template <int N>  struct simd2spmd<std::experimental::simd_mask<char, simd_abi::native_fixed_size<char, N>>> {
+  using type = bool;
+};
+
 // * tuple of types converts to tuple of converted tuple element types.
 template <class... T> struct simd2spmd<std::tuple<T...>> {
   using type = std::tuple<typename simd2spmd<T>::type...>;
