@@ -390,7 +390,7 @@ __ESIMD_API void block_store(Tx *p, simd<Tx, N> vals) {
 ///
 template <typename Tx, int N, typename AccessorTy,
           class T = detail::__raw_t<Tx>>
-__ESIMD_API void block_store(AccessorTy acc, uint32_t offset,
+__ESIMD_API void block_store(AccessorTy acc, uint64_t offset,
                              simd<Tx, N> vals) {
 #ifdef __ESIMD_FORCE_STATELESS_MEM
   block_store<Tx, N>(__ESIMD_DNS::accessorToPointer<Tx>(acc, offset), vals);
