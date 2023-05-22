@@ -840,6 +840,7 @@ __ESIMD_API std::
 /// elements must be 4 bytes in size.
 /// @tparam N Number of pixels to access (matches the size of the \c offsets
 ///   vector). Must be 8, 16 or 32.
+/// @tparam Toffset The offset type.
 /// @param acc The accessor representing memory address of the access.
 /// @param offsets Byte offsets of the pixels relative to the base pointer.
 /// @param global_offset Byte offset of the pixels relative to the base pointer.
@@ -850,12 +851,18 @@ __ESIMD_API std::
 ///
 template <rgba_channel_mask RGBAMask = rgba_channel_mask::ABGR,
           typename AccessorT, int N,
-          typename T = typename AccessorT::value_type>
-__ESIMD_API std::enable_if_t<((N == 8 || N == 16 || N == 32) &&
-                              sizeof(T) == 4 && !std::is_pointer_v<AccessorT>),
-                             simd<T, N * get_num_channels_enabled(RGBAMask)>>
-gather_rgba(AccessorT acc, simd<uint32_t, N> offsets,
-            uint32_t global_offset = 0, simd_mask<N> mask = 1) {
+          typename T = typename AccessorT::value_type, typename Toffset>
+__ESIMD_API std::enable_if_t<
+    ((N == 8 || N == 16 || N == 32) && sizeof(T) == 4 &&
+     !std::is_pointer_v<AccessorT>)&&std::is_integral_v<Toffset>,
+    simd<T, N * get_num_channels_enabled(RGBAMask)>>
+gather_rgba(AccessorT acc, simd<Toffset, N> offsets,
+#ifdef __ESIMD_FORCE_STATELESS_MEM
+            uint64_t global_offset = 0,
+#else
+            uint32_t global_offset = 0,
+#endif
+            simd_mask<N> mask = 1) {
 #ifdef __ESIMD_FORCE_STATELESS_MEM
   return gather_rgba<RGBAMask>(
       __ESIMD_DNS::accessorToPointer<T>(acc, global_offset), offsets, mask);
@@ -863,9 +870,13 @@ gather_rgba(AccessorT acc, simd<uint32_t, N> offsets,
   // TODO (performance) use hardware-supported scale once BE supports it
   constexpr uint32_t Scale = 0;
   const auto SI = get_surface_index(acc);
+#ifdef __SYCL_DEVICE_ONLY__
+  static_assert(sizeof(Toffset) <= 4, "Unsupported offset type");
+#endif
+  auto loc_offsets = convert<uint32_t>(offsets);
   return __esimd_gather4_masked_scaled2<detail::__raw_t<T>, N, RGBAMask,
                                         decltype(SI), Scale>(
-      SI, global_offset, offsets.data(), mask.data());
+      SI, global_offset, loc_offsets.data(), mask.data());
 #endif
 }
 
@@ -878,6 +889,7 @@ gather_rgba(AccessorT acc, simd<uint32_t, N> offsets,
 /// The returned vector elements mast match the accessor data type. The loaded
 /// elements must be 4 bytes in size.
 /// @tparam N The number of elements to access.
+/// @tparam Toffset The offset type.
 /// @param offsets Byte offsets of each element.
 /// @param vals values to be written.
 /// @param global_offset Byte offset of the pixels relative to the base pointer.
@@ -885,12 +897,18 @@ gather_rgba(AccessorT acc, simd<uint32_t, N> offsets,
 ///
 template <rgba_channel_mask RGBAMask = rgba_channel_mask::ABGR,
           typename AccessorT, int N,
-          typename T = typename AccessorT::value_type>
+          typename T = typename AccessorT::value_type, typename Toffset>
 __ESIMD_API std::enable_if_t<(N == 8 || N == 16 || N == 32) && sizeof(T) == 4 &&
-                             !std::is_pointer_v<AccessorT>>
-scatter_rgba(AccessorT acc, simd<uint32_t, N> offsets,
+                             !std::is_pointer_v<AccessorT> &&
+                             std::is_integral_v<Toffset>>
+scatter_rgba(AccessorT acc, simd<Toffset, N> offsets,
              simd<T, N * get_num_channels_enabled(RGBAMask)> vals,
-             uint32_t global_offset = 0, simd_mask<N> mask = 1) {
+#ifdef __ESIMD_FORCE_STATELESS_MEM
+             uint64_t global_offset = 0,
+#else
+             uint32_t global_offset = 0,
+#endif
+             simd_mask<N> mask = 1) {
   detail::validate_rgba_write_channel_mask<RGBAMask>();
 #ifdef __ESIMD_FORCE_STATELESS_MEM
   scatter_rgba<RGBAMask>(__ESIMD_DNS::accessorToPointer<T>(acc, global_offset),
@@ -899,8 +917,12 @@ scatter_rgba(AccessorT acc, simd<uint32_t, N> offsets,
   // TODO (performance) use hardware-supported scale once BE supports it
   constexpr uint32_t Scale = 0;
   const auto SI = get_surface_index(acc);
+#ifdef __SYCL_DEVICE_ONLY__
+  static_assert(sizeof(Toffset) <= 4, "Unsupported offset type");
+#endif
+  auto loc_offsets = convert<uint32_t>(offsets);
   __esimd_scatter4_scaled<T, N, decltype(SI), RGBAMask, Scale>(
-      mask.data(), SI, global_offset, offsets.data(), vals.data());
+      mask.data(), SI, global_offset, loc_offsets.data(), vals.data());
 #endif
 }
 
