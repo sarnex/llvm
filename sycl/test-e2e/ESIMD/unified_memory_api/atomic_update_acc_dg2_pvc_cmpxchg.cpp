@@ -7,7 +7,7 @@
 //===---------------------------------------------------------------------===//
 
 // REQUIRES: gpu-intel-pvc || gpu-intel-dg2
-
+// UNSUPPORTED: gpu
 // RUN: %{build} -o %t.out
 // RUN: %{run} %t.out
 

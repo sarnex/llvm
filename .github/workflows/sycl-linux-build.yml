@@ -118,6 +118,23 @@ jobs:
       CCACHE_DIR: ${{ inputs.build_cache_root }}/build_cache_${{ inputs.build_cache_suffix }}
       CCACHE_MAXSIZE: 8G
     steps:
+    - name: Setup Yarn      
+      uses: mskelton/setup-yarn@v2.0.0
+      run: |
+        yarn add codeowners-api
+    - name: Use Yarn
+      uses: actions/github-script@v6
+      with:
+      script: |
+         import {Codeowner} from 'codeowners-api';
+         const repoParams = {repo: 'my-repo', owner: 'repo-owner'}
+         const authParams = {type: 'token', token: 'xxxx'}    
+         const codeOwnersApi = new Codeowner(repoParams, authParams);
+         const result = await codeOwnersApi.filterForCodeOwner(
+         ['/something/a.py', 'tests/something.js', 'tests/something.txt', 'packages/some/deep/dir/index.tsx'],
+         '@elaygl'
+         );
+
     - name: Deduce artifact archive params
       # To reduce number of inputs parameters that is limited for manual triggers.
       id: artifact_info
