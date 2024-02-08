@@ -122,6 +122,9 @@ jobs:
       uses: mskelton/setup-yarn@v2.0.0
       run: |
         yarn add codeowners-api
+    - name: Setup Yarn 2  
+      run: |
+        yarn add codeowners-api
     - name: Use Yarn
       uses: actions/github-script@v6
       with:
