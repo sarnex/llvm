@@ -120,8 +120,6 @@ jobs:
     steps:
     - name: Setup Yarn      
       uses: mskelton/setup-yarn@v2.0.0
-      run: |
-        yarn add codeowners-api
     - name: Setup Yarn 2  
       run: |
         yarn add codeowners-api
