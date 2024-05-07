@@ -313,6 +313,29 @@ appendCompileOptionsForGRFSizeProperties(std::string &CompileOpts,
   }
 }
 
+static std::optional<RTDeviceBinaryImage::PropertyRange::ConstIterator>
+getPropIt(const RTDeviceBinaryImage &Img, const std::string &PropName) {
+  const RTDeviceBinaryImage::PropertyRange &PropRange =
+      Img.getDeviceRequirements();
+  RTDeviceBinaryImage::PropertyRange::ConstIterator PropIt = std::find_if(
+      PropRange.begin(), PropRange.end(),
+      [&PropName](RTDeviceBinaryImage::PropertyRange::ConstIterator &&Prop) {
+        return (*Prop)->Name == PropName;
+      });
+  return (PropIt == PropRange.end())
+             ? std::nullopt
+             : std::optional<RTDeviceBinaryImage::PropertyRange::ConstIterator>{
+                   PropIt};
+}
+
+static ByteArray getAspectsFromIterator(
+    RTDeviceBinaryImage::PropertyRange::ConstIterator AspectsPropIt) {
+  ByteArray Aspects = DeviceBinaryProperty(*AspectsPropIt).asByteArray();
+  // Drop 8 bytes describing the size of the byte array.
+  Aspects.dropBytes(8);
+  return Aspects;
+}
+
 static void appendCompileOptionsFromImage(std::string &CompileOpts,
                                           const RTDeviceBinaryImage &Img,
                                           const std::vector<device> &Devs,
@@ -332,13 +355,30 @@ static void appendCompileOptionsFromImage(std::string &CompileOpts,
       CompileOpts += std::string(TemporaryStr);
   }
   bool isEsimdImage = getUint32PropAsBool(Img, "isEsimdImage");
-  // The -vc-codegen and -ftranslate-legacy-memory-intrinsics options are
+  // The -vc-codegen option is
   // always preserved for ESIMD kernels, regardless of the contents
   // of the SYCL_PROGRAM_COMPILE_OPTIONS environment variable.
   if (isEsimdImage) {
     if (!CompileOpts.empty())
       CompileOpts += " ";
-    CompileOpts += "-vc-codegen -ftranslate-legacy-memory-intrinsics";
+    CompileOpts += "-vc-codegen";
+    bool UsesLegacyImages = false;
+    auto AspectsPropIt = getPropIt(Img, "aspects");
+    if (AspectsPropIt) {
+      ByteArray Aspects = getAspectsFromIterator(*AspectsPropIt);
+      while (!Aspects.empty()) {
+        aspect Aspect = Aspects.consume<aspect>();
+        if (Aspect == aspect::ext_intel_legacy_image) {
+          UsesLegacyImages = true;
+          break;
+        }
+      }
+    }
+    // Pass -ftranslate-legacy-memory-intrinsics if the image doesn't use legacy
+    // images.
+    if (!UsesLegacyImages)
+      CompileOpts += " -ftranslate-legacy-memory-intrinsics";
+
     // Allow warning and performance hints from vc/finalizer if the RT warning
     // level is at least 1.
     if (detail::SYCLConfig<detail::SYCL_RT_WARNING_LEVEL>::get() == 0)
@@ -2681,33 +2721,17 @@ std::optional<sycl::exception>
 checkDevSupportDeviceRequirements(const device &Dev,
                                   const RTDeviceBinaryImage &Img,
                                   const NDRDescT &NDRDesc) {
-  auto getPropIt = [&Img](const std::string &PropName) {
-    const RTDeviceBinaryImage::PropertyRange &PropRange =
-        Img.getDeviceRequirements();
-    RTDeviceBinaryImage::PropertyRange::ConstIterator PropIt = std::find_if(
-        PropRange.begin(), PropRange.end(),
-        [&PropName](RTDeviceBinaryImage::PropertyRange::ConstIterator &&Prop) {
-          return (*Prop)->Name == PropName;
-        });
-    return (PropIt == PropRange.end())
-               ? std::nullopt
-               : std::optional<
-                     RTDeviceBinaryImage::PropertyRange::ConstIterator>{PropIt};
-  };
-
-  auto AspectsPropIt = getPropIt("aspects");
-  auto JointMatrixPropIt = getPropIt("joint_matrix");
-  auto JointMatrixMadPropIt = getPropIt("joint_matrix_mad");
-  auto ReqdWGSizeUint32TPropIt = getPropIt("reqd_work_group_size");
-  auto ReqdWGSizeUint64TPropIt = getPropIt("reqd_work_group_size_uint64_t");
-  auto ReqdSubGroupSizePropIt = getPropIt("reqd_sub_group_size");
+  auto AspectsPropIt = getPropIt(Img, "aspects");
+  auto JointMatrixPropIt = getPropIt(Img, "joint_matrix");
+  auto JointMatrixMadPropIt = getPropIt(Img, "joint_matrix_mad");
+  auto ReqdWGSizeUint32TPropIt = getPropIt(Img, "reqd_work_group_size");
+  auto ReqdWGSizeUint64TPropIt =
+      getPropIt(Img, "reqd_work_group_size_uint64_t");
+  auto ReqdSubGroupSizePropIt = getPropIt(Img, "reqd_sub_group_size");
 
   // Checking if device supports defined aspects
   if (AspectsPropIt) {
-    ByteArray Aspects =
-        DeviceBinaryProperty(*(AspectsPropIt.value())).asByteArray();
-    // Drop 8 bytes describing the size of the byte array.
-    Aspects.dropBytes(8);
+    ByteArray Aspects = getAspectsFromIterator(*AspectsPropIt);
     while (!Aspects.empty()) {
       aspect Aspect = Aspects.consume<aspect>();
       if (!Dev.has(Aspect))

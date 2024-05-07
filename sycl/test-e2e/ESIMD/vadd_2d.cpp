@@ -16,6 +16,7 @@
 #include <sycl/sycl.hpp>
 
 using namespace sycl;
+;
 
 int main(void) {
   constexpr unsigned Size = 256;

@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 // RUN: %{build} -o %t.out
 // RUN: %{run} %t.out
+// REQUIRES: sg-8
 
 #include "../esimd_test_utils.hpp"
 
