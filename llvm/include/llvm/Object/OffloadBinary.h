@@ -151,6 +151,9 @@ private:
   const Header *TheHeader;
   /// Location of the metadata entries within the binary.
   const Entry *TheEntry;
+
+  /// XXX: Hack
+  SmallVector<std::string, 8> TmpStringData;
 };
 
 /// A class to contain the binary information for a single OffloadBinary that

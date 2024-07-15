@@ -11318,8 +11318,17 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
 
     bool IsUsingLTO = D.isUsingLTO(/*IsDeviceOffloadAction=*/true);
     auto LTOMode = D.getLTOMode(/*IsDeviceOffloadAction=*/true);
-    if (IsUsingLTO && LTOMode == LTOK_Thin)
+    if (IsUsingLTO && LTOMode == LTOK_Thin) {
       CmdArgs.push_back(Args.MakeArgString("-sycl-thin-lto"));
+      // TODO: Pass the same value for this argument once we start using it
+      // for non-thinLTO.
+      CmdArgs.push_back(Args.MakeArgString("-sycl-module-split-mode=auto"));
+      // functions are dropped if not inlined, prevent that
+      CmdArgs.push_back("-mllvm");
+      CmdArgs.push_back("-avail-extern-to-local=true");
+      CmdArgs.push_back("-mllvm");
+      CmdArgs.push_back("-import-instr-limit=4294967295");
+    }
 
     if (Args.hasArg(options::OPT_fsycl_embed_ir))
       CmdArgs.push_back(Args.MakeArgString("-sycl-embed-ir"));
