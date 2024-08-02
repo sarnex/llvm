@@ -135,6 +135,41 @@ jobs:
       sycl_toolchain_archive: ${{ needs.build-win.outputs.artifact_archive_name }}
       extra_lit_opts: --param gpu-intel-gen12=True
 
+  cuda-aws:
+    needs: [ubuntu2204_build]
+    if: |
+      always()
+      && !cancelled()
+      && needs.build.outputs.build_conclusion == 'success'
+    steps:
+      - uses: ./.github/workflows/sycl-aws.yml
+        with:
+          mode: start
+          runs-on-list: '[{"runs-on":"aws_cuda-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}","aws-ami":"ami-01cb0573cb039ab24","aws-type":["g5.2xlarge","g5.4xlarge"],"aws-disk":"/dev/sda1:64","aws-spot":"false"}]'
+      - uses: ./.github/workflows/sycl-linux-run-tests.yml
+        with:
+          name: CUDA E2E
+          runner: '["aws_cuda-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}"]'
+          image: ghcr.io/intel/llvm/ubuntu2204_build:latest-0300ac924620a51f76c4929794637b82790f12ab
+          image_options: -u 1001 --gpus all --cap-add SYS_ADMIN --env NVIDIA_DISABLE_REQUIRE=1
+          target_devices: ext_oneapi_cuda:gpu
+          # No idea why but that seems to work and be in sync with the main
+          # pre-commit workflow.
+          ref: ${{ github.event.workflow_run.referenced_workflows[0].sha }}
+          merge_ref: ''
+
+          sycl_toolchain_artifact: sycl_linux_default
+          sycl_toolchain_archive: llvm_sycl.tar.zst
+          sycl_toolchain_decompress_command: zstd
+
+  cuda-aws-stop:
+    if: always()
+    needs: [cuda-aws]
+    uses: ./.github/workflows/sycl-aws.yml
+    with:
+        mode: stop
+        runs-on-list: '[{"runs-on":"aws_cuda-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}","aws-ami":"ami-01cb0573cb039ab24","aws-type":["g5.2xlarge","g5.4xlarge"],"aws-disk":"/dev/sda1:64","aws-spot":"false"}]'
+	
   nightly_build_upload:
     name: Nightly Build Upload
     if: ${{ github.ref_name == 'sycl' }}
