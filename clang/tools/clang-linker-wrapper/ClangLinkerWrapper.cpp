@@ -44,6 +44,7 @@
 #include "llvm/Remarks/HotnessThresholdParser.h"
 #include "llvm/SYCLLowerIR/ComputeModuleRuntimeInfo.h"
 #include "llvm/SYCLLowerIR/ModuleSplitter.h"
+#include "llvm/SYCLLowerIR/SpecConstants.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/FileOutputBuffer.h"
@@ -703,6 +704,14 @@ static bool considerOnlyKernelsAsEntryPoints(const ArgList &Args,
 bool isSYCLThinLTO(const ArgList &Args, const llvm::Triple Triple) {
   // TODO: Support CUDA/HIP
   return Triple.isSPIROrSPIRV() && Args.hasArg(OPT_sycl_thin_lto);
+}
+
+static bool areSpecConstsSupported(const ArgList &Args,
+                                   const llvm::Triple Triple) {
+  const llvm::Triple HostTriple(Args.getLastArgValue(OPT_host_triple_EQ));
+  bool SYCLNativeCPU = (HostTriple == Triple);
+  return (!Triple.isNVPTX() && !Triple.isAMDGCN() && !Triple.isSPIRAOT() &&
+          !SYCLNativeCPU);
 }
 
 /// Add any sycl-post-link options that rely on a specific Triple in addition
@@ -1744,8 +1753,9 @@ std::unique_ptr<lto::LTO> createLTO(
   // backend for the spir64 triple, so override it to
   // the SPIR-V backlend.
   // TODO: Remove once SYCL uses the SPIR-V backend.
-  if (sycl::isSYCLThinLTO(Args, Triple))
+  if (sycl::isSYCLThinLTO(Args, Triple)) {
     Conf.OverrideTriple = "spirv64-unknown-unknown";
+  }
 
   // TODO: Should we complain about combining --opt-level and -passes, as opt
   // does?  That might be too limiting in clang-linker-wrapper, so for now we
@@ -1802,11 +1812,11 @@ std::unique_ptr<lto::LTO> createLTO(
     // Passing Args to each thinLTO thread causes crashes, so compute everything
     // we can here.
     const llvm::Triple Triple(Args.getLastArgValue(OPT_triple_EQ));
-    bool OnlyKernelsAsEntryPoints =
-        sycl::considerOnlyKernelsAsEntryPoints(Args, Triple);
-    auto GlobalBinProps = sycl::computeGlobalBinProps(Args, Triple);
     SmallVector<StringRef, 8> SPIRVArgs;
     sycl::computeLLVMToSPIRVTranslationToolArgs(Args, SPIRVArgs);
+    auto SpecConstArg = sycl::areSpecConstsSupported(Args, Triple)
+                            ? SpecConstantsPass::HandlingMode::native
+                            : SpecConstantsPass::HandlingMode::emulation;
     Conf.PreCodeGenModuleHook = [=, &BitcodeInputFiles](unsigned Task,
                                                         const Module &M) {
       // This is the main part of SYCL LTO handling.
@@ -1823,41 +1833,46 @@ std::unique_ptr<lto::LTO> createLTO(
         return true;
       }
 
-      llvm::sycl::EntryPointSet EntryPoints;
-
-      for (const Function &F : M.functions()) {
-        if (llvm::module_split::isEntryPoint(F, OnlyKernelsAsEntryPoints))
-          EntryPoints.insert(const_cast<Function *>(&F));
-      }
-      // No entry points, don't proceed
-      if (EntryPoints.empty())
-        return false;
-
       if (SaveTemps)
         PreCodeGenSaveTemps(Task, M);
 
       // TODO: Handle spec constants.
+      {
+        ModulePassManager RunSpecConst;
+        ModuleAnalysisManager MAM;
+        /*SpecConstantsPass SCP(SpecConstLower == SC_NATIVE_MODE
+                              ? SpecConstantsPass::HandlingMode::native
+                              : SpecConstantsPass::HandlingMode::emulation);*/
+        SpecConstantsPass SCP(SpecConstArg);
+        // Register required analysis
+        MAM.registerPass([&] { return PassInstrumentationAnalysis(); });
+        RunSpecConst.addPass(std::move(SCP));
 
+        // Perform the spec constant intrinsics transformation on resulting
+        // module
+        RunSpecConst.run(const_cast<Module &>(M), MAM);
+      }
       // TODO: Handle internalization of non-entry-points, we don't do it during
       // early split anymore.
       // One problem is that the modules are pased in as `const Module&`, and
       // ideally we want to delete non-entry point functions, but const-casting
       // and modifying the module seems from here seems wrong.
 
-      auto ModuleProps = llvm::sycl::computeModuleProperties(
-          M, EntryPoints, GlobalBinProps,
-          /*SpecConstsMet=*/false, /*SpecConstsMet=*/false);
-      std::string ModulePropsStr;
-      raw_string_ostream SCOut(ModulePropsStr);
-      ModuleProps.write(SCOut);
-      std::string ModuleSyms =
-          llvm::sycl::computeModuleSymbolTable(M, EntryPoints);
-      // This part is the hackiest part of this change. However, this code is
-      // run on multiple threads, so the data structures we can use are more
-      // limited. We can't use StringRef because we would need a StringSaver to
-      // keep the values around, but StringSaver is not thread safe.
-      OffloadF.getBinary()->addTmpString(ModulePropsStr);
-      OffloadF.getBinary()->addTmpString(ModuleSyms);
+      // auto ModuleProps = llvm::sycl::computeModuleProperties(
+      //     M, EntryPoints, GlobalBinProps,
+      //     /*SpecConstsMet=*/false, /*SpecConstsMet=*/false);
+      // std::string ModulePropsStr;
+      // raw_string_ostream SCOut(ModulePropsStr);
+      // ModuleProps.write(SCOut);
+      // std::string ModuleSyms =
+      //     llvm::sycl::computeModuleSymbolTable(M, EntryPoints);
+      // // This part is the hackiest part of this change. However, this code is
+      // // run on multiple threads, so the data structures we can use are more
+      // // limited. We can't use StringRef because we would need a StringSaver
+      // to
+      // // keep the values around, but StringSaver is not thread safe.
+      // OffloadF.getBinary()->addTmpString(ModulePropsStr);
+      // OffloadF.getBinary()->addTmpString(ModuleSyms);
       // TODO: Use SPIR-V backend instead of SPIR-V translator once the backend
       // is mature.
       auto IRFile = createOutputFile(sys::path::filename(ExecutableName) + "." +
@@ -2522,23 +2537,49 @@ Expected<SmallVector<StringRef>> linkAndWrapDeviceFiles(
           // with community code.
           const OffloadFile &F = BitcodeInputFiles[FileIdx];
           const auto &SYCLInfo = F.getBinary()->getTmpStrings();
-          if (SYCLInfo.size() != 3)
+          if (SYCLInfo.size() != 1)
             continue;
           // The hardcoded vector indexes are very hacky,
           // but I feel the most controversial part of this hcange is how we
           // store the required information for later and it's likely to change
           // based on feedback, so I didn't completely design that part yet.
-          StringRef CodegenPath = SYCLInfo[2];
+          StringRef CodegenPath = SYCLInfo[0];
           assert(!CodegenPath.empty() && "Codegen failed");
-          const auto &Props = SYCLInfo[0];
-          auto MB = MemoryBuffer::getMemBuffer(Props);
-          auto PropSetOrErr = llvm::util::PropertySetRegistry::read(MB.get());
-          if (!PropSetOrErr)
-            return PropSetOrErr.takeError();
-          llvm::util::PropertySetRegistry Properties =
-              std::move(**PropSetOrErr);
-          const auto &Syms = SYCLInfo[1];
-          SplitModules.emplace_back(CodegenPath, std::move(Properties), Syms);
+
+          LLVMContext Context;
+          auto B = MemoryBuffer::getMemBuffer(F.getBinary()->getImage());
+          auto PM = parseBitcodeFile(*B, Context);
+          if (!PM)
+            return PM.takeError();
+          auto &M = **PM;
+          llvm::sycl::EntryPointSet EntryPoints;
+          bool OnlyKernelsAsEntryPoints =
+              sycl::considerOnlyKernelsAsEntryPoints(Args, Triple);
+          auto GlobalBinProps = sycl::computeGlobalBinProps(Args, Triple);
+          for (const Function &F : M.functions()) {
+            if (llvm::module_split::isEntryPoint(F, OnlyKernelsAsEntryPoints))
+              EntryPoints.insert(const_cast<Function *>(&F));
+          }
+          if (EntryPoints.empty())
+            continue;
+          bool Seen = M.getNamedMetadata("sycl.specialization-constants");
+
+          auto Properties = llvm::sycl::computeModuleProperties(
+              M, EntryPoints, GlobalBinProps,
+              /*SpecConstsMet=*/Seen, /*SpecConstsMet=*/false);
+
+          // const auto &Props = SYCLInfo[0];
+          // auto MB = MemoryBuffer::getMemBuffer(Props);
+          // auto PropSetOrErr =
+          // llvm::util::PropertySetRegistry::read(MB.get()); if (!PropSetOrErr)
+          //   return PropSetOrErr.takeError();
+          // llvm::util::PropertySetRegistry Properties =
+          //     std::move(**PropSetOrErr);
+          // const auto &Syms = SYCLInfo[1];
+          std::string ModuleSyms =
+              llvm::sycl::computeModuleSymbolTable(M, EntryPoints);
+          SplitModules.emplace_back(CodegenPath, std::move(Properties),
+                                    ModuleSyms);
         }
         // We don't need the OffloadFiles anymore, so free them from memory.
         BitcodeInputFiles.clear();
