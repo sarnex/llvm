@@ -4,6 +4,9 @@
 // RUN: %{build} -fno-builtin -fsycl-device-lib-jit-link -o %t.out
 // RUN: %{run} %t.out
 //
+// RUN: %{build} -fsycl-targets=spirv64 -fno-builtin -fsycl-device-lib-jit-link -o %t.out
+// RUN: %{run} %t.out
+//
 // UNSUPPORTED: cuda || hip
 
 // Windows doesn't yet have full shutdown().
