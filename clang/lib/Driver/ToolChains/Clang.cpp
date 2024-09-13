@@ -11327,7 +11327,7 @@ void LinkerWrapper::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-mllvm");
       CmdArgs.push_back("-avail-extern-to-local=true");
       CmdArgs.push_back("-mllvm");
-      CmdArgs.push_back("-import-instr-limit=4294967295");
+      CmdArgs.push_back("-import-instr-limit=2147483647");
     }
 
     if (Args.hasArg(options::OPT_fsycl_embed_ir))
