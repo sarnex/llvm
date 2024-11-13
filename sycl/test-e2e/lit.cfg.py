@@ -441,9 +441,7 @@ if len(config.sycl_devices) == 1 and config.sycl_devices[0] == "all":
         "{} {}".format(config.run_launcher, sycl_ls) if config.run_launcher else sycl_ls
     )
     sp = subprocess.check_output(cmd, text=True, shell=True)
-    for line in sp.splitlines():
-        if "gfx90a" in line:
-            config.available_features.add("gpu-amd-gfx90a")
+    for line in sp.splitlines():       
         if not line.startswith("["):
             continue
         (backend, device) = line[1:].split("]")[0].split(":")
