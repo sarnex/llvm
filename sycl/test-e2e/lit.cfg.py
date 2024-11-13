@@ -782,7 +782,7 @@ for sycl_device in config.sycl_devices:
         config.substitutions.append(
             ("%rocm_path", os.environ.get("ROCM_PATH", "/opt/rocm"))
         )
-    elif "hip:gpu" in config.sycl_devices and config.hip_platform == "NVIDIA":
+    elif be == "hip" and config.hip_platform == "NVIDIA":
         config.available_features.add("hip_nvidia")
         arch_flag = ""
     else:
