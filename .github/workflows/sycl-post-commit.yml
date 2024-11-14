@@ -23,7 +23,7 @@ permissions: read-all
 
 jobs:
   build-lin:
-    name: Linux (Self build + no-assertions)
+    name: Linudx (Self build + no-assertions)
     uses: ./.github/workflows/sycl-linux-build.yml
     with:
       build_cache_root: "/__w/llvm"
