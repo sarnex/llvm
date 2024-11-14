@@ -139,6 +139,7 @@ jobs:
           echo "Unsupported extension"
           exit 1
         fi
+        echo ${{ toJson(github) }}
     - uses: actions/checkout@v4
       with:
         sparse-checkout: |
