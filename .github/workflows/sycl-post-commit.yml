@@ -23,7 +23,7 @@ permissions: read-all
 
 jobs:
   build-lin:
-    name: Linux (Self build + no-assertions)
+    name: Linux (Self build + no-assertionss)
     if: github.repository == 'intel/llvm'
     uses: ./.github/workflows/sycl-linux-build.yml
     with:
