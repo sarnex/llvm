@@ -1,6 +1,6 @@
 # -*- Python -*-
 
-import os 
+import os  
 import platform
 import copy
 import re
