@@ -13,7 +13,7 @@ on:
 
       target_devices:
         type: string
-        required: False
+        required: true
       extra_cmake_args:
         type: string
         required: False
