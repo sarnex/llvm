@@ -3787,7 +3787,8 @@ static CallingConv getCCForDeclaratorChunk(
   }
   if (!S.getLangOpts().isSYCL()) {
     for (const ParsedAttr &AL : D.getDeclSpec().getAttributes()) {
-      if (AL.getKind() == ParsedAttr::AT_DeviceKernel) {
+      if (AL.getKind() == ParsedAttr::AT_DeviceKernel &&
+          !DeviceKernelAttr::isSYCLSpelling(AL)) {
         CC = CC_DeviceKernel;
         break;
       }
