@@ -54,16 +54,24 @@ set(compile_opts
   )
 
 set(SYCL_LIBDEVICE_GCC_TOOLCHAIN "" CACHE PATH "Path to GCC installation")
-
+set(SYCL_LIBDEVICE_COMPILE_FLAGS "" CACHE STRING "Custom flags")
 if (NOT SYCL_LIBDEVICE_GCC_TOOLCHAIN STREQUAL "")
-  list(APPEND compile_opts "--gcc-install-dir=${SYCL_LIBDEVICE_GCC_TOOLCHAIN}")
+  if(SYCL_USE_LIBCXX)
+    message(FATAL_ERROR "SYCL_USE_LIBCXX and SYCL_LIBDEVICE_GCC_TOOLCHAIN cannot both be specified")
+  endif()
+  list(APPEND compile_opts --gcc-install-dir=${SYCL_LIBDEVICE_GCC_TOOLCHAIN})
 endif()
-
 if (WIN32)
   list(APPEND compile_opts -D_ALLOW_RUNTIME_LIBRARY_MISMATCH)
   list(APPEND compile_opts -D_ALLOW_ITERATOR_DEBUG_LEVEL_MISMATCH)
 endif()
-
+if (SYCL_USE_LIBCXX)
+  list(APPEND compile_opts -I${SYCL_LIBCXX_INCLUDE_PATH})
+  list(APPEND compile_opts -stdlib=libc++)
+endif()
+if (NOT SYCL_LIBDEVICE_COMPILE_FLAGS STREQUAL "")
+  list(APPEND compile_opts ${SYCL_LIBDEVICE_COMPILE_FLAGS})
+endif()
 add_custom_target(libsycldevice)
 
 set(filetypes obj obj-new-offload spv bc)
@@ -643,7 +651,13 @@ set(imf_host_cxx_flags -c
 if (NOT SYCL_LIBDEVICE_GCC_TOOLCHAIN STREQUAL "")
   list(APPEND imf_host_cxx_flags "--gcc-install-dir=${SYCL_LIBDEVICE_GCC_TOOLCHAIN}")
 endif()
-
+if (SYCL_USE_LIBCXX)
+  list(APPEND imf_host_cxx_flags -I${SYCL_LIBCXX_INCLUDE_PATH})
+  list(APPEND imf_host_cxx_flags -stdlib=libc++)
+endif()
+if (NOT SYCL_LIBDEVICE_COMPILE_FLAGS STREQUAL "")
+  list(APPEND imf_host_cxx_flags ${SYCL_LIBDEVICE_COMPILE_FLAGS})
+endif()
 macro(mangle_name str output)
   string(STRIP "${str}" strippedStr)
   string(REGEX REPLACE "^/" "" strippedStr "${strippedStr}")

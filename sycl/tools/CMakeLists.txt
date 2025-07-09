@@ -6,7 +6,11 @@ function(link_llvm_libs target)
 endfunction()
 
 add_subdirectory(sycl-ls)
-add_subdirectory(syclbin-dump)
+if("${SYCL_USE_LIBCXX}" STREQUAL "${LLVM_LIBCXX_USED}")
+  add_subdirectory(syclbin-dump)
+else()
+  message(WARNING "Base LLVM and SYCL not built with the same C++ STL implementation, not building syclbin-dump")
+endif()
 
 if (SYCL_ENABLE_XPTI_TRACING)
   if (UNIX)

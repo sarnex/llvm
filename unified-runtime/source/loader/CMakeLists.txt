@@ -77,7 +77,7 @@ if(UR_STATIC_ADAPTER_L0)
 endif()
 
 if(UR_ENABLE_TRACING)
-    target_link_libraries(ur_loader PRIVATE ${TARGET_XPTI})
+    target_link_libraries(ur_loader PRIVATE ${TARGET_XPTI} -lc++ -lc++abi)
     target_include_directories(ur_loader PRIVATE ${xpti_SOURCE_DIR}/include)
     target_compile_definitions(ur_loader PRIVATE XPTI_STATIC_LIBRARY)
 endif()
