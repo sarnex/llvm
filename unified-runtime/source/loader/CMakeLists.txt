@@ -210,7 +210,7 @@ if(UR_ENABLE_SANITIZER)
         target_link_libraries(ur_loader PRIVATE LLVMSupport LLVMSymbolize)
         # In in-tree build, if LLVM is built with libc++, we also need to build
         # symbolizer.cpp with libc++ abi and link libc++ in.
-        if(NOT UR_STANDALONE_BUILD AND LLVM_LIBCXX_USED)
+        if(NOT UR_STANDALONE_BUILD AND LLVM_LIBCXX_USED AND NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang|IntelLLVM")
             execute_process(
                 COMMAND ${CMAKE_CXX_COMPILER} --print-file-name=libc++.a
                 OUTPUT_VARIABLE LIBCXX_PATH

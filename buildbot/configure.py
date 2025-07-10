@@ -253,16 +253,18 @@ def do_configure(args, passthrough_args):
     if args.use_libcxx:
         if not (args.libcxx_include and args.libcxx_library):
             sys.exit(
-                "Please specify include and library path of libc++ when building sycl "
-                "runtime with it"
+                "Please specify include and library path of libc++ when building "
+                "with it"
             )
         cmake_cmd.extend(
             [
-                "-DSYCL_USE_LIBCXX=ON",
-                "-DSYCL_LIBCXX_INCLUDE_PATH={}".format(args.libcxx_include),
-                "-DSYCL_LIBCXX_LIBRARY_PATH={}".format(args.libcxx_library),
+                "-DLLVM_ENABLE_LIBCXX=ON",
             ]
         )
+        if not "CMAKE_CXX_FLAGS" in cmake_cmd:
+             cmake_cmd.extend(["-DCMAKE_CXX_FLAGS='-nostdinc++ -I{} -L{}'".format(args.libcxx_include, args.libcxx_library)])
+        else:
+            print("Custom C++ flags are specified and libc++ is enabled, specify the include and link paths manually")
 
     cmake_cmd += passthrough_args
     print("[Cmake Command]: {}".format(" ".join(map(shlex.quote, cmake_cmd))))

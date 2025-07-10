@@ -15,6 +15,10 @@
 
 #include "sanitizer_common/sanitizer_libdevice.hpp"
 
+#if (_LIBCPP_VERSION)
+#include <cstddef>
+#endif
+
 #if !defined(__SPIR__) && !defined(__SPIRV__)
 namespace ur_sanitizer_layer {
 #endif // !__SPIR__ && !__SPIRV__

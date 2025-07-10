@@ -156,9 +156,7 @@ used.
 **Linux**:
 
 ```sh
--DSYCL_USE_LIBCXX=ON \
--DSYCL_LIBCXX_INCLUDE_PATH=<path to libc++ headers> \
--DSYCL_LIBCXX_LIBRARY_PATH=<path to libc++ and libc++abi libraries>
+-DLLVM_ENABLE_LIBCXX=ON
 ```
 
 You can also use configure script to enable:
