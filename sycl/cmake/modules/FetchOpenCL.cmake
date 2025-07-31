@@ -73,8 +73,8 @@ if(NOT OpenCL_FOUND)
       )
 
     FetchContent_MakeAvailable(ocl-icd)
-    set(OpenCL_LIBRARY OpenCL CACHE PATH "" FORCE)
   endif()
+  set(OpenCL_LIBRARY OpenCL::OpenCL CACHE PATH "" FORCE)
 else()
   message(STATUS
     "Using OpenCL ICD Loader at ${OpenCL_LIBRARY}")
