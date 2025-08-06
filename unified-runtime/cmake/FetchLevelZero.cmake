@@ -137,12 +137,8 @@ if(NOT UR_COMPUTE_RUNTIME_FETCH_REPO AND L0_COMPUTE_RUNTIME_HEADERS)
     set(COMPUTE_RUNTIME_REPO_PATH "${L0_COMPUTE_RUNTIME_HEADERS}")
 elseif (UR_COMPUTE_RUNTIME_FETCH_REPO OR NOT COMPUTE_RUNTIME_REPO_PATH)
     # Fetch only if UR_COMPUTE_RUNTIME_FETCH_REPO is set to ON.
-    if (UR_COMPUTE_RUNTIME_REPO STREQUAL "")
-        set(UR_COMPUTE_RUNTIME_REPO "https://github.com/intel/compute-runtime.git")
-    endif()
-    if (UR_COMPUTE_RUNTIME_TAG STREQUAL "")
-        set(UR_COMPUTE_RUNTIME_TAG 25.05.32567.17)
-    endif()
+    set(UR_COMPUTE_RUNTIME_REPO "https://github.com/intel/compute-runtime.git")
+    set(UR_COMPUTE_RUNTIME_TAG 25.05.32567.17)
 
     include(FetchContent)
     # Sparse fetch only the dir with level zero headers for experimental features to avoid pulling in the entire compute-runtime.
