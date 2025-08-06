@@ -45,7 +45,7 @@ endif()
 #     message(STATUS "Level Zero Adapter: Copying Level Zero headers to local build tree")
 #     file(COPY ${UR_LEVEL_ZERO_INCLUDE_DIR}/ DESTINATION ${LEVEL_ZERO_COPY_DIR})
 # endif()
-if(UR_COMPUTE_RUNTIME_FETCH_REPO OR NOT LEVEL_ZERO_LIB_NAME AND NOT LEVEL_ZERO_LIBRARY)
+if(NOT LEVEL_ZERO_LIB_NAME AND NOT LEVEL_ZERO_LIBRARY)
 
     message(STATUS "Level Zero Adapter: Download Level Zero loader and headers from github.com")
 
@@ -90,6 +90,7 @@ if(UR_COMPUTE_RUNTIME_FETCH_REPO OR NOT LEVEL_ZERO_LIB_NAME AND NOT LEVEL_ZERO_L
     set(CMAKE_MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY_BAK}")
 
    
+    set(LEVEL_ZERO_LIBRARY ze_loader)
 
     set(LEVEL_ZERO_INCLUDE_DIR
       ${level-zero-loader_SOURCE_DIR}/include CACHE PATH "Path to Level Zero Headers")
@@ -101,7 +102,6 @@ if(UR_COMPUTE_RUNTIME_FETCH_REPO OR NOT LEVEL_ZERO_LIB_NAME AND NOT LEVEL_ZERO_L
 
     endif()
 
-set(LEVEL_ZERO_LIBRARY ze_loader)
 
 add_library(LevelZeroLoader INTERFACE)
 # The MSVC linker does not like / at the start of a path, so to work around this
