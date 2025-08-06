@@ -168,5 +168,5 @@ message(STATUS "Level Zero Adapter: Using Level Zero headers from ${COMPUTE_RUNT
 target_include_directories(ComputeRuntimeLevelZero-Headers
     INTERFACE "$<BUILD_INTERFACE:${COMPUTE_RUNTIME_LEVEL_ZERO_INCLUDE}>"
               "$<BUILD_INTERFACE:${COMPUTE_RUNTIME_REPO_PATH}>"
-              "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+              "$<INSTALL_INTERFACE:${LEVEL_ZERO_TARGET_INCLUDE_DIR}>"
 )
