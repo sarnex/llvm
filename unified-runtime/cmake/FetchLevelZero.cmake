@@ -3,32 +3,37 @@
 # See LICENSE.TXT
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-set(UR_LEVEL_ZERO_LOADER_LIBRARY "" CACHE FILEPATH "Path of the Level Zero Loader library")
-set(UR_LEVEL_ZERO_INCLUDE_DIR "" CACHE FILEPATH "Directory containing the Level Zero Headers")
-set(UR_LEVEL_ZERO_LOADER_REPO "" CACHE STRING "Github repo to get the Level Zero loader sources from")
-set(UR_LEVEL_ZERO_LOADER_TAG "" CACHE STRING " GIT tag of the Level Loader taken from github repo")
-set(UR_COMPUTE_RUNTIME_REPO "" CACHE STRING "Github repo to get the compute runtime sources from")
-set(UR_COMPUTE_RUNTIME_TAG "" CACHE STRING " GIT tag of the compute runtime taken from github repo")
+set(UR_COMPUTE_RUNTIME_FETCH_REPO OFF CACHE BOOL "Flag to indicate wheather to fetch the compute runtime repo")
 
-# If UR_COMPUTE_RUNTIME_FETCH_REPO is set to OFF, then UR_COMPUTE_RUNTIME_REPO should be defined and
-# should point to the compute runtime repo.
-set(UR_COMPUTE_RUNTIME_FETCH_REPO ON CACHE BOOL "Flag to indicate wheather to fetch the compute runtime repo")
-
-# Copy Level Zero loader/headers locally to the build to avoid leaking their path.
-set(LEVEL_ZERO_COPY_DIR ${CMAKE_CURRENT_BINARY_DIR}/level_zero_loader)
-if (NOT UR_LEVEL_ZERO_LOADER_LIBRARY STREQUAL "")
-    get_filename_component(LEVEL_ZERO_LIB_NAME "${UR_LEVEL_ZERO_LOADER_LIBRARY}" NAME)
-    set(LEVEL_ZERO_LIBRARY ${LEVEL_ZERO_COPY_DIR}/${LEVEL_ZERO_LIB_NAME})
-    message(STATUS "Level Zero Adapter: Copying Level Zero loader to local build tree")
-    file(COPY ${UR_LEVEL_ZERO_LOADER_LIBRARY} DESTINATION ${LEVEL_ZERO_COPY_DIR} FOLLOW_SYMLINK_CHAIN)
-endif()
-if (NOT UR_LEVEL_ZERO_INCLUDE_DIR STREQUAL "")
-    set(LEVEL_ZERO_INCLUDE_DIR ${LEVEL_ZERO_COPY_DIR})
-    message(STATUS "Level Zero Adapter: Copying Level Zero headers to local build tree")
-    file(COPY ${UR_LEVEL_ZERO_INCLUDE_DIR}/ DESTINATION ${LEVEL_ZERO_COPY_DIR})
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(level-zero OPTIONAL)
+  set(LEVEL_ZERO_INCLUDE_DIR "${level-zero_INCLUDE_DIR}")
+  set(LEVEL_ZERO_LIBRARY_SRC "${level-zero_LIBRARY_DIR}")
+  set(LEVEL_ZERO_LIB_NAME "${level-zero_LIBRARY}")
+else()
+  set(L0_HEADER_PATH "loader/ze_loader.h")
+  find_path(L0_HEADER ${L0_HEADER_PATH} ${CMAKE_PREFIX_PATH} PATH_SUFFIXES "level_zero")
+  find_library(ZE_LOADER NAMES ze_loader HINTS /usr ${CMAKE_PREFIX_PATH})  
 endif()
 
-if (NOT DEFINED LEVEL_ZERO_LIBRARY OR NOT DEFINED LEVEL_ZERO_INCLUDE_DIR)
+#get_filename_component(LEVEL_ZERO_LIBRARY_SRC "${LEVEL_ZERO_LIBRARY}" DIRECTORY)
+#get_filename_component(LEVEL_ZERO_LIB_NAME "${LEVEL_ZERO_LIBRARY}" NAME)
+
+# # Copy Level Zero loader/headers locally to the build to avoid leaking their path.
+# set(LEVEL_ZERO_COPY_DIR ${CMAKE_CURRENT_BINARY_DIR}/level_zero_loader)
+# if (NOT UR_LEVEL_ZERO_LOADER_LIBRARY STREQUAL "")
+#     get_filename_component(LEVEL_ZERO_LIB_NAME "${UR_LEVEL_ZERO_LOADER_LIBRARY}" NAME)
+#     set(LEVEL_ZERO_LIBRARY ${LEVEL_ZERO_COPY_DIR}/${LEVEL_ZERO_LIB_NAME})
+#     message(STATUS "Level Zero Adapter: Copying Level Zero loader to local build tree")
+#     file(COPY ${UR_LEVEL_ZERO_LOADER_LIBRARY} DESTINATION ${LEVEL_ZERO_COPY_DIR} FOLLOW_SYMLINK_CHAIN)
+# endif()
+# if (NOT UR_LEVEL_ZERO_INCLUDE_DIR STREQUAL "")
+#     set(LEVEL_ZERO_INCLUDE_DIR ${LEVEL_ZERO_COPY_DIR})
+#     message(STATUS "Level Zero Adapter: Copying Level Zero headers to local build tree")
+#     file(COPY ${UR_LEVEL_ZERO_INCLUDE_DIR}/ DESTINATION ${LEVEL_ZERO_COPY_DIR})
+# endif()
+if(UR_COMPUTE_RUNTIME_FETCH_REPO OR NOT TARGET level-zero)
     message(STATUS "Level Zero Adapter: Download Level Zero loader and headers from github.com")
 
     # Workaround warnings/errors for Level Zero build
@@ -43,12 +48,9 @@ if (NOT DEFINED LEVEL_ZERO_LIBRARY OR NOT DEFINED LEVEL_ZERO_INCLUDE_DIR)
     endif()
     set(BUILD_STATIC ON)
 
-    if (UR_LEVEL_ZERO_LOADER_REPO STREQUAL "")
-        set(UR_LEVEL_ZERO_LOADER_REPO "https://github.com/oneapi-src/level-zero.git")
-    endif()
-    if (UR_LEVEL_ZERO_LOADER_TAG STREQUAL "")
-        set(UR_LEVEL_ZERO_LOADER_TAG 35c037cdf4aa9a2e6df34b6f1ce1bdc86ac5422f)
-    endif()
+    set(UR_LEVEL_ZERO_LOADER_REPO "https://github.com/oneapi-src/level-zero.git")
+    set(UR_LEVEL_ZERO_LOADER_TAG 35c037cdf4aa9a2e6df34b6f1ce1bdc86ac5422f)
+   
 
     # Disable due to a bug https://github.com/oneapi-src/level-zero/issues/104
     set(CMAKE_INCLUDE_CURRENT_DIR OFF)
@@ -74,22 +76,29 @@ if (NOT DEFINED LEVEL_ZERO_LIBRARY OR NOT DEFINED LEVEL_ZERO_INCLUDE_DIR)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BAK}")
     set(CMAKE_MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY_BAK}")
 
-    target_compile_options(ze_loader PRIVATE
+   
+
+    set(LEVEL_ZERO_INCLUDE_DIR
+      ${level-zero-loader_SOURCE_DIR}/include CACHE PATH "Path to Level Zero Headers")
+
+   target_compile_options(ze_loader PRIVATE
         $<$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang;Intel;IntelLLVM>:-Wno-error>
         $<$<CXX_COMPILER_ID:MSVC>:/WX- /UUNICODE>
-    )
+        )
 
-    set(LEVEL_ZERO_LIBRARY ze_loader)
-    set(LEVEL_ZERO_INCLUDE_DIR
-        ${level-zero-loader_SOURCE_DIR}/include CACHE PATH "Path to Level Zero Headers")
-endif()
+    endif()
+
+set(LEVEL_ZERO_LIBRARY ze_loader)
 
 add_library(LevelZeroLoader INTERFACE)
 # The MSVC linker does not like / at the start of a path, so to work around this
 # we split it into a link library and a library path, where the path is allowed
 # to have leading /.
+if(NOT LEVEL_ZERO_LIBRARY_SRC OR NOT LEVEL_ZERO_LIB_NAME)
 get_filename_component(LEVEL_ZERO_LIBRARY_SRC "${LEVEL_ZERO_LIBRARY}" DIRECTORY)
 get_filename_component(LEVEL_ZERO_LIB_NAME "${LEVEL_ZERO_LIBRARY}" NAME)
+endif()
+
 target_link_directories(LevelZeroLoader
     INTERFACE "$<BUILD_INTERFACE:${LEVEL_ZERO_LIBRARY_SRC}>"
               "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
