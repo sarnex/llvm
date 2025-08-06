@@ -3,6 +3,11 @@
 # See LICENSE.TXT
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+if(TARGET LevelZeroLoader)
+  # We only need to run this once.
+  return()
+endif()
+
 set(UR_COMPUTE_RUNTIME_FETCH_REPO OFF CACHE BOOL "Flag to indicate wheather to fetch the compute runtime repo")
 
 find_package(PkgConfig QUIET)
