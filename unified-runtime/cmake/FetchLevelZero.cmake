@@ -38,7 +38,8 @@ endif()
 #     message(STATUS "Level Zero Adapter: Copying Level Zero headers to local build tree")
 #     file(COPY ${UR_LEVEL_ZERO_INCLUDE_DIR}/ DESTINATION ${LEVEL_ZERO_COPY_DIR})
 # endif()
-if(UR_COMPUTE_RUNTIME_FETCH_REPO OR NOT TARGET level-zero)
+if(UR_COMPUTE_RUNTIME_FETCH_REPO OR NOT LEVEL_ZERO_LIB_NAME OR NOT LEVEL_ZERO_INCLUDE_DIR)
+
     message(STATUS "Level Zero Adapter: Download Level Zero loader and headers from github.com")
 
     # Workaround warnings/errors for Level Zero build
