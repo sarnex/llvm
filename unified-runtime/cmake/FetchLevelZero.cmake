@@ -11,6 +11,9 @@ endif()
 set(UR_COMPUTE_RUNTIME_FETCH_REPO OFF CACHE BOOL "Flag to indicate wheather to fetch the compute runtime repo")
 
 find_package(PkgConfig QUIET)
+# LevelZero doesn't install a CMake config target, just PkgConfig,
+# so try using that to find the install and if it's not available
+# just try to search for the path.
 if(PkgConfig_FOUND)
   pkg_check_modules(level-zero OPTIONAL)
   if(level-zero_FOUND)
@@ -170,3 +173,5 @@ target_include_directories(ComputeRuntimeLevelZero-Headers
               "$<BUILD_INTERFACE:${COMPUTE_RUNTIME_REPO_PATH}>"
               "$<INSTALL_INTERFACE:${LEVEL_ZERO_TARGET_INCLUDE_DIR}>"
 )
+
+set(LEVEL_ZERO_INCLUDE_DIR "${LEVEL_ZERO_INCLUDE_DIR}" CACHE INTERNAL)
