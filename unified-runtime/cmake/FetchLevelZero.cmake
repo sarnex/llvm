@@ -28,6 +28,7 @@ else()
     set(LEVEL_ZERO_INCLUDE_DIR "${L0_HEADER}")
     set(LEVEL_ZERO_LIBRARY "${ZE_LOADER}")
     message(STATUS "Level Zero Adapter: Using preinstalled level zero loader at ${LEVEL_ZERO_LIBRARY}")
+    add_library(ze_loader INTERFACE)
   endif()
 endif()
 
@@ -115,7 +116,7 @@ target_include_directories(LevelZeroLoader-Headers
     INTERFACE "$<BUILD_INTERFACE:${LEVEL_ZERO_INCLUDE_DIR}>"
               "$<INSTALL_INTERFACE:${LEVEL_ZERO_TARGET_INCLUDE_DIR}>"
 )
-
+ 
 find_path(L0_COMPUTE_RUNTIME_HEADERS
   NAMES "ze_intel_gpu.h"
   PATH_SUFFIXES "level_zero"
