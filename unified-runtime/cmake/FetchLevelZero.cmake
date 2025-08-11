@@ -116,7 +116,6 @@ target_include_directories(LevelZeroLoader-Headers
     INTERFACE "$<BUILD_INTERFACE:${LEVEL_ZERO_INCLUDE_DIR}>"
               "$<INSTALL_INTERFACE:${LEVEL_ZERO_TARGET_INCLUDE_DIR}>"
 )
- 
 find_path(L0_COMPUTE_RUNTIME_HEADERS
   NAMES "ze_intel_gpu.h"
   PATH_SUFFIXES "level_zero"
