@@ -15,10 +15,6 @@ on:
         description: 'ccache directory'
         required: true
         type: string
-      blender_classroom_dir:
-        description: 'Blender classroom demo directory'
-        required: true
-        type: string
       toolchain_artifact:
         description: 'Artifact name for toolchain download'
         required: true
@@ -36,6 +32,9 @@ env:
 jobs:
   blender:
     runs-on: ${{ fromJSON(inputs.runner) }}
+    container:
+      image: ${{ contains(inputs.runner, 'Linux') && 'ghcr.io/intel/llvm/ubuntu2404_blender' || '' }}
+      options: ${{ contains(inputs.runner, 'Linux') && '-u 1001 --device=/dev/dri -v /dev/dri/by-path:/dev/dri/by-path --privileged --cap-add SYS_ADMIN' || '' }}
     name: Build and Test Blender on ${{ contains(inputs.runner, 'Windows') && 'Windows' || 'Linux' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -62,15 +61,15 @@ jobs:
         uses: ./devops/actions/blender/oidn
         with:
           cmake_install_prefix: ${{ env.OIDN_INSTALL_DIR }}
-          c_compiler: ${{ github.workspace }}/install/bin/clang${{ runner.os == 'Windows' && '.exe' }}
-          cxx_compiler: ${{ github.workspace }}/install/bin/clang++${{ runner.os == 'Windows' && '.exe' }}
+          c_compiler: ${{ github.workspace }}/install/bin/clang${{ runner.os == 'Windows' && '.exe' || '' }}
+          cxx_compiler: ${{ github.workspace }}/install/bin/clang++${{ runner.os == 'Windows' && '.exe' || '' }}
 
       - name: Build Embree
         uses: ./devops/actions/blender/embree
         with:
           cmake_install_prefix: ${{ env.EMBREE_INSTALL_DIR }}
-          c_compiler: ${{ github.workspace }}/install/bin/clang${{ runner.os == 'Windows' && '.exe' }}
-          cxx_compiler: ${{ github.workspace }}/install/bin/clang++${{ runner.os == 'Windows' && '.exe' }}
+          c_compiler: ${{ github.workspace }}/install/bin/clang${{ runner.os == 'Windows' && '.exe' || '' }}
+          cxx_compiler: ${{ github.workspace }}/install/bin/clang++${{ runner.os == 'Windows' && '.exe' || '' }}
 
       - name: Build Blender
         uses: ./devops/actions/blender/blender-build
@@ -86,11 +85,10 @@ jobs:
         uses: ./devops/actions/blender/blender-demo
         with:
           blender_dir: ${{ github.workspace }}/blender-install
-          blender_classroom_dir: ${{ inputs.blender_classroom_dir }}
 
       - name: Cleanup
-        shell: cmd
+        shell: bash
         if: always()
         run: |
-         rmdir /q /s "${{ env.OIDN_INSTALL_DIR }}" "${{ env.EMBREE_INSTALL_DIR }}" "${{ env.BLENDER_INSTALL_DIR }}"
+          rm -rf "${{ env.OIDN_INSTALL_DIR }}" "${{ env.EMBREE_INSTALL_DIR }}" "${{ env.BLENDER_INSTALL_DIR }}"
   

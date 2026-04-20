@@ -17,6 +17,7 @@ runs:
   using: "composite"
   steps:
     - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+      if: runner.os == 'Windows'
       with:
         arch: amd64
 
@@ -26,7 +27,7 @@ runs:
         repository: 'RenderKit/embree'
         ref: 'v4.4.0'
         path: 'embree-src'
-        cache_path: "D:\\\\github\\\\_work\\\\repo_cache\\\\"
+        cache_path: ${{ runner.os == 'Windows' && 'D:\\github\\_work\\repo_cache\\' || '/__w/repo_cache/' }}
 
     - name: Update Embree Submodules
       shell: bash
@@ -59,7 +60,7 @@ runs:
       run: cmake --install embree-build --config Release
 
     - name: Cleanup
-      shell: cmd
+      shell: bash
       if: always()
       run: |
-        rmdir /q /s embree-build embree-src
+        rm -rf embree-build embree-src

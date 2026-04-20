@@ -17,8 +17,13 @@ runs:
   using: "composite"
   steps:
     - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+      if: runner.os == 'Windows'
       with:
         arch: amd64
+
+    - name: Source OneAPI TBB vars.sh
+      if: runner.os == 'Linux'
+      uses: ./devops/actions/source-tbb
 
     - name: Checkout OIDN
       uses: ./devops/actions/cached_checkout
@@ -26,7 +31,7 @@ runs:
         repository: 'RenderKit/oidn'
         ref: 'v2.4.1'
         path: 'oidn-src'
-        cache_path: "D:\\\\github\\\\_work\\\\repo_cache\\\\"
+        cache_path: ${{ runner.os == 'Windows' && 'D:\\github\\_work\\repo_cache\\' || '/__w/repo_cache/' }}
 
     - name: Update OIDN Submodules
       shell: bash
@@ -48,7 +53,8 @@ runs:
           -DCMAKE_CXX_COMPILER="$CXX_COMPILER_INPUT" \
           -DOIDN_DEVICE_SYCL=ON \
           -DOIDN_DEVICE_CUDA=OFF \
-          -DOIDN_DEVICE_HIP=OFF
+          -DOIDN_DEVICE_HIP=OFF \
+          -DOIDN_DEVICE_CPU=OFF
 
     - name: Build OIDN
       shell: bash
@@ -59,7 +65,7 @@ runs:
       run: cmake --install oidn-build --config Release
 
     - name: Cleanup
-      shell: cmd
+      shell: bash
       if: always()
       run: |
-        rmdir /q /s oidn-build oidn-src
+        rm -rf oidn-build oidn-src

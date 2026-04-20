@@ -5,17 +5,29 @@ inputs:
   blender_dir:
     description: 'Blender installation directory'
     required: true
-  blender_classroom_dir:
-    description: 'Blender classroom demo directory'
-    required: true
 runs:
   using: "composite"
   steps:
+    - name: Download Classroom Demo
+      shell: bash
+      run: |
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          CLASSROOM_URL="https://download.blender.org/demo/eevee/classroom.zip"
+          curl -L -o classroom.zip "$CLASSROOM_URL"
+          unzip -q classroom.zip
+          CLASSROOM_DIR="$PWD/classroom"
+        else
+          CLASSROOM_URL="https://download.blender.org/demo/eevee/classroom.zip"
+          curl -L -o classroom.zip "$CLASSROOM_URL"
+          unzip -q classroom.zip
+          CLASSROOM_DIR="$PWD/classroom"
+        fi
+        echo "CLASSROOM_DIR=$CLASSROOM_DIR" >> $GITHUB_ENV
+
     - name: Render Classroom Scene
       shell: bash
       env:
         BLENDER_DIR: ${{ inputs.blender_dir }}
-        CLASSROOM_DIR: ${{ inputs.blender_classroom_dir }}
       run: |
         BLENDER_EXE="$BLENDER_DIR/blender$([[ "${{ runner.os }}" == "Windows" ]] && echo ".exe")"
         "$BLENDER_EXE" -b -noaudio --debug-cycles --verbose 3 --engine CYCLES "$CLASSROOM_DIR/classroom.blend" -f 1 -- --cycles-device ONEAPI
