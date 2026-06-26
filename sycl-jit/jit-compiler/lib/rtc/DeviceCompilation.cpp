@@ -53,8 +53,10 @@
 #include <llvm/Support/BinaryStreamWriter.h>
 #include <llvm/Support/Caching.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <llvm/Support/Path.h>
 #include <llvm/Support/PropertySetIO.h>
 #include <llvm/Support/TimeProfiler.h>
+#include <llvm/Support/VirtualFileSystem.h>
 #include <llvm/TargetParser/AMDGPUTargetParser.h>
 
 #include <algorithm>
@@ -261,6 +263,33 @@ class SYCLToolchain {
     // suppress the unused argument warning.
     DAL.AddFlagArg(nullptr, OptTable.getOption(OPT_Qunused_arguments));
 
+    // We bundle a libc++ and llvm-libc header set into the shared library (see
+    // `jit-compiler/CMakeLists.txt`). Force the in-memory toolchain to use only
+    // those headers so that runtime device compilation does not depend on a
+    // system C/C++ toolchain being installed:
+    //  * `-nostdinc++` drops the default C++ standard library search paths;
+    //  * `-nostdlibinc` drops the system C library search paths (but keeps
+    //    clang's own builtin/resource header dir, unlike `-nostdinc`);
+    //  * we then add the bundled libc++, llvm-libc and clang resource headers
+    //    explicitly via `-isystem`.
+    // This is device-only, header-only usage: we never link libc++/libc.
+    if (HasBundledStdlibHeaders) {
+      DAL.AddFlagArg(nullptr, OptTable.getOption(OPT_nostdincxx));
+      DAL.AddFlagArg(nullptr, OptTable.getOption(OPT_nostdlibinc));
+      DAL.AddJoinedArg(nullptr, OptTable.getOption(OPT_stdlib_EQ), "libc++");
+#ifdef _WIN32
+      // On a Windows-MSVC target libc++ defaults to the vcruntime ABI and pulls
+      // MSVC's <new.h>. We bundle no MSVC headers, so opt out: libc++ then uses
+      // its own placement new/delete declarations. Header-only/device-only, so
+      // this has no runtime/ABI consequence here. Not needed on other platforms.
+      DAL.AddJoinedArg(nullptr, OptTable.getOption(OPT_D),
+                       "_LIBCPP_NO_VCRUNTIME");
+#endif
+      for (const std::string &Dir : getBundledIncludeDirs()) {
+        DAL.AddSeparateArg(nullptr, OptTable.getOption(OPT_isystem), Dir);
+      }
+    }
+
     if (Format == BinaryFormat::PTX || Format == BinaryFormat::AMDGCN) {
       auto [CPU, Features] =
           Translator::getTargetCPUAndFeatureAttrs(nullptr, "", Format);
@@ -289,6 +318,9 @@ class SYCLToolchain {
     transform(ASL, std::back_inserter(CommandLine),
               [](const char *AS) { return std::string{AS}; });
     CommandLine.emplace_back(SourceFilePath);
+CommandLine.emplace_back("-v");
+for(auto wat : CommandLine)
+llvm::errs() << wat << "\n";
     return CommandLine;
   }
 
@@ -627,12 +659,74 @@ public:
   std::string_view getClangXXExe() const { return ClangXXExe; }
   std::string_view getLibclcDir() const { return LibclcDir; }
 
+  // Whether a self-contained libc++/llvm-libc header set is bundled into the
+  // shared library. When true, `createCommandLine` forces device compilation to
+  // use only the bundled headers via `getBundledIncludeDirs()`.
+  bool hasBundledStdlibHeaders() const { return HasBundledStdlibHeaders; }
+
+  // The `-isystem` directories (in search order) for the bundled C++/C standard
+  // library and clang builtin headers. All paths live in the in-memory
+  // toolchain VFS rooted at `Prefix`. Returns an empty list when no headers are
+  // bundled.
+  const std::vector<std::string> &getBundledIncludeDirs() const {
+    return BundledIncludeDirs;
+  }
+
 private:
   clang::IgnoringDiagConsumer IgnoreDiag;
   std::string_view Prefix{jit_compiler::resource::ToolchainPrefix.S,
                           jit_compiler::resource::ToolchainPrefix.Size};
   std::string ClangXXExe = (Prefix + "/bin/clang++").str();
-  std::string LibclcDir = GetResourcesPath(ClangXXExe) + "/lib/";
+  std::string ResourceDir = GetResourcesPath(ClangXXExe);
+  std::string LibclcDir = ResourceDir + "/lib/";
+
+  // Computed once from the (virtual) install layout produced by the resource
+  // embedding in `jit-compiler/CMakeLists.txt`. In `-isystem` search order:
+  //   * <prefix>/msvc-compat  - MSVC-spelled C decls augmenting llvm-libc
+  //                             (must precede `include/` so its #include_next
+  //                             reaches the llvm-libc counterparts)
+  //   * <prefix>/include/c++/v1 - libc++ headers (incl. __config_site)
+  //   * <resource-dir>/include  - clang builtin/freestanding headers
+  //   * <prefix>/include        - llvm-libc C headers
+  // Missing optional dirs are harmless (clang just skips them).
+  std::vector<std::string> BundledIncludeDirs = computeBundledIncludeDirs();
+  bool HasBundledStdlibHeaders = !BundledIncludeDirs.empty();
+
+  std::vector<std::string> computeBundledIncludeDirs() const {
+    std::string PrefixStr{Prefix};
+    std::string CxxV1 = PrefixStr + "/include/c++/v1";
+
+    // The presence of the libc++ headers in the bundled VFS is the signal that
+    // a self-contained stdlib was embedded at build time.
+    auto FS = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::vfs::getRealFileSystem());
+    FS->dump();
+    FS->pushOverlay(getToolchainFS());
+    if (!FS->exists(CxxV1 + "/__config")) {
+      return {};
+    }
+
+    std::vector<std::string> Dirs;
+    // Platform-specific C-library compatibility headers that augment llvm-libc
+    // (e.g. MSVC spellings on Windows). Only present when the build staged them,
+    // and must precede `include/` so their `#include_next` reaches llvm-libc.
+    std::string CompatDir = PrefixStr + "/msvc-compat";
+    if (FS->exists(CompatDir)) {
+      Dirs.push_back(std::move(CompatDir));
+    }
+  
+    Dirs.push_back(CxxV1);                 // libc++ headers (+ __config_site)
+    Dirs.push_back(ResourceDir + "/include"); // clang builtin/freestanding
+    Dirs.push_back(PrefixStr + "/include");   // llvm-libc C headers
+#ifndef _WIN32
+    //std::string TripleCxxV1 = Prefix;
+    //TripleCxxV1 += "/x86_64-unknown-linux-gnu/" + CxxV1;
+    Dirs.push_back(PrefixStr + "/include/x86_64-unknown-linux-gnu/");    
+    Dirs.push_back(PrefixStr + "/include/x86_64-unknown-linux-gnu/c++/v1");
+#endif      
+    Dirs.push_back("/iusers/nsarnie/llvm_libc/build/here");
+    return Dirs;
+  }
 
   PrecompiledPreambles Preambles;
 };

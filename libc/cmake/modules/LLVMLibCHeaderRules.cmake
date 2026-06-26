@@ -81,7 +81,13 @@ function(add_gen_header target_name)
     ${ARGN}
   )
   get_fq_target_name(${target_name} fq_target_name)
-  if(NOT LLVM_LIBC_FULL_BUILD AND NOT ADD_GEN_HDR_PROXY)
+  # In overlay mode the public headers normally come from the system C library,
+  # so the gen-header targets are empty interface libraries. Consumers that need
+  # llvm-libc's own generated headers in overlay mode (e.g. sycl-jit, which
+  # bundles them for runtime device compilation) set LIBC_INSTALL_OVERLAY_HEADERS
+  # to actually generate them.
+  if(NOT LLVM_LIBC_FULL_BUILD AND NOT ADD_GEN_HDR_PROXY AND
+     NOT LIBC_INSTALL_OVERLAY_HEADERS)
     add_library(${fq_target_name} INTERFACE)
     return()
   endif()

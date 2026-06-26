@@ -36,6 +36,18 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${LIBC_TARGET_OS})
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/${LIBC_TARGET_OS})
 endif()
 
+# Consumers that bundle the headers for device compilation (sycl-jit, via
+# LIBC_INSTALL_OVERLAY_HEADERS) need the OS-variant macro files that the
+# dispatch headers (e.g. time-macros.h) select based on *compile-time* target
+# macros: a SYCL device pass defines __ELF__ and so resolves the `baremetal`
+# variant regardless of the host LIBC_TARGET_OS. Make that subdirectory's
+# headers available too.
+if(LIBC_INSTALL_OVERLAY_HEADERS AND
+   NOT "${LIBC_TARGET_OS}" STREQUAL "baremetal" AND
+   EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/baremetal)
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/baremetal)
+endif()
+
 add_macro_header(
   annex_k_macros
   HDR
@@ -326,10 +338,19 @@ add_macro_header(
     termios-macros.h
 )
 
+# When bundling headers for device compilation, the SYCL device pass defines
+# __ELF__ so time-macros.h pulls baremetal/time-macros.h; make the `time_macros`
+# target carry it so it is generated/installed alongside.
+if(LIBC_INSTALL_OVERLAY_HEADERS AND
+   NOT "${LIBC_TARGET_OS}" STREQUAL "baremetal")
+  set(_overlay_time_macros_deps .baremetal.time_macros)
+endif()
 add_macro_header(
   time_macros
   HDR
     time-macros.h
+  DEPENDS
+    ${_overlay_time_macros_deps}
 )
 
 add_macro_header(

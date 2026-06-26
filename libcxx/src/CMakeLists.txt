@@ -340,6 +340,11 @@ set_target_properties(cxx_experimental
   PROPERTIES
     COMPILE_FLAGS "${LIBCXX_COMPILE_FLAGS}"
     OUTPUT_NAME   "c++experimental"
+    # When neither the shared nor the static library is built, libc++ is being
+    # configured header-only (e.g. sycl-jit bundles only the headers). There is
+    # then no base library for cxx_experimental to link against, so keep it out
+    # of the default `all` build; it is still reachable explicitly by name.
+    EXCLUDE_FROM_ALL "$<IF:$<OR:$<BOOL:${LIBCXX_ENABLE_SHARED}>,$<BOOL:${LIBCXX_ENABLE_STATIC}>>,FALSE,TRUE>"
 )
 cxx_add_common_build_flags(cxx_experimental)
 target_compile_options(cxx_experimental PUBLIC -D_LIBCPP_ENABLE_EXPERIMENTAL)

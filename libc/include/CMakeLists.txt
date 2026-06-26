@@ -1020,8 +1020,11 @@ add_header_macro(
     .llvm-libc-types.EFI_SYSTEM_TABLE
 )
 
-if(NOT LLVM_LIBC_FULL_BUILD)
-  # We don't install headers in non-fullbuild mode.
+if(NOT LLVM_LIBC_FULL_BUILD AND NOT LIBC_INSTALL_OVERLAY_HEADERS)
+  # We don't install headers in non-fullbuild mode, unless a consumer (e.g.
+  # sycl-jit, which bundles the headers for runtime device compilation) opts in
+  # via LIBC_INSTALL_OVERLAY_HEADERS to obtain the generated header set without a
+  # full libc build.
   return()
 endif()
 
@@ -1076,7 +1079,7 @@ foreach(target IN LISTS all_install_header_targets)
   endif()
 endforeach()
 
-if(LLVM_LIBC_FULL_BUILD)
+if(LLVM_LIBC_FULL_BUILD OR LIBC_INSTALL_OVERLAY_HEADERS)
   add_custom_target(install-libc-headers
                     DEPENDS libc-headers
                     COMMAND "${CMAKE_COMMAND}"

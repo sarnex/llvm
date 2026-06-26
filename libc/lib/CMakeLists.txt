@@ -30,6 +30,15 @@ foreach(archive IN ZIP_LISTS
     PROPERTIES
       ARCHIVE_OUTPUT_NAME ${archive_0}
   )
+  if(NOT LLVM_LIBC_FULL_BUILD AND LIBC_INSTALL_OVERLAY_HEADERS)
+    # Header-bundling overlay mode (e.g. sycl-jit, which only needs the
+    # generated headers): keep the aggregate archive out of the default `all`
+    # build so it isn't compiled. Building it pulls in every entrypoint's
+    # source, which is both unnecessary here and can fail when the generated
+    # overlay headers (e.g. <malloc.h>) shadow the system headers that libc's
+    # own sources expect. The archive is still reachable by name on demand.
+    set_target_properties(${archive_1} PROPERTIES EXCLUDE_FROM_ALL ON)
+  endif()
   if(LLVM_LIBC_FULL_BUILD)
     target_link_libraries(${archive_1} PUBLIC libc-headers)
     if(TARGET libc-startup)

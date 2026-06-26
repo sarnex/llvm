@@ -79,8 +79,10 @@
 // Both MinGW and native MSVC provide a "MSVC"-like environment
 #    define _LIBCPP_MSVCRT_LIKE
 // If mingw not explicitly detected, assume using MS C runtime only if
-// a MS compatibility version is specified.
-#    if defined(_MSC_VER) && !defined(__MINGW32__)
+// a MS compatibility version is specified. When libc++ has been configured to
+// use llvm-libc as its C library, the MS C runtime is not in use even on an
+// _MSC_VER (clang-cl) target, so don't claim it.
+#    if defined(_MSC_VER) && !defined(__MINGW32__) && !_LIBCPP_LIBC_LLVM_LIBC
 #      define _LIBCPP_MSVCRT // Using Microsoft's C Runtime library
 #    endif
 #    if (defined(_M_AMD64) || defined(__x86_64__)) || (defined(_M_ARM) || defined(__arm__))

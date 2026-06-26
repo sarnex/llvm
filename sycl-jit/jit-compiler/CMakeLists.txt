@@ -34,6 +34,26 @@ if (libclc_enabled)
   list(APPEND SYCL_JIT_RESOURCE_INSTALL_COMPONENTS libspirv-builtins)
 endif()
 
+# The libc++ and llvm-libc *headers* let `sycl-jit` compile SYCL device code
+# without depending on a system C/C++ toolchain at runtime. They are produced
+# (header-only, no runtime library) by a named runtime target equal to the host
+# triple, configured via `RUNTIMES_<triple>_*` in `buildbot/configure.py`.
+# Detect that target and embed its headers into the shared library.
+set(jit_stdlib_headers_target "")
+foreach(tgt IN LISTS LLVM_RUNTIME_TARGETS)
+  # The headers are always routed through a named host-triple target, never the
+  # `default` target (see `buildbot/configure.py`).
+  if(NOT "${tgt}" STREQUAL "default" AND
+     "libcxx" IN_LIST RUNTIMES_${tgt}_LLVM_ENABLE_RUNTIMES)
+    set(jit_stdlib_headers_target "${tgt}")
+    break()
+  endif()
+endforeach()
+if(jit_stdlib_headers_target)
+  # libc++ provides the C++ headers; llvm-libc provides the C headers they need.
+  list(APPEND SYCL_JIT_RESOURCE_INSTALL_COMPONENTS cxx-headers libc-headers)
+endif()
+
 set(SYCL_JIT_RESOURCE_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/rtc-resources-install)
 
 set(SYCL_JIT_PREPARE_RESOURCE_COMMANDS)
@@ -53,6 +73,18 @@ foreach(component IN LISTS SYCL_JIT_RESOURCE_INSTALL_COMPONENTS)
         sycl_jit_add_install_command("${component}" "${CMAKE_BINARY_DIR}/runtimes/runtimes-${tgt}-bins/libclc")
       endif()
     endforeach()
+  elseif("${component}" STREQUAL "cxx-headers" OR
+         "${component}" STREQUAL "libc-headers")
+    # The libc++ and llvm-libc headers are produced by the named host-triple
+    # runtime subbuild. We only need the *headers*, never a library, so we don't
+    # build the whole `runtimes-<target>` ALL target (which would compile
+    # `cxx_experimental` and fail for an MSVC target with no hosted libc).
+    # `rtc-runtime-headers` (below) drives just the header-generation targets.
+    # The component install then copies the materialized headers from the
+    # per-target subbuild's binary dir.
+    list(APPEND SYCL_JIT_RESOURCE_DEPS rtc-runtime-headers)
+    sycl_jit_add_install_command("${component}"
+      "${CMAKE_BINARY_DIR}/runtimes/runtimes-${jit_stdlib_headers_target}-bins")
   else()
     list(APPEND SYCL_JIT_RESOURCE_DEPS ${component})
     sycl_jit_add_install_command("${component}" "${CMAKE_BINARY_DIR}")
@@ -61,6 +93,41 @@ endforeach()
 
   # OpenCL-Headers doesn't have a corresponding build target:
 list(FILTER SYCL_JIT_RESOURCE_DEPS EXCLUDE REGEX "^OpenCL-Headers$")
+list(REMOVE_DUPLICATES SYCL_JIT_RESOURCE_DEPS)
+
+if(jit_stdlib_headers_target)
+  # Materialize the libc++ and llvm-libc headers without building any library:
+  # `generate-cxx-headers` and `install-libc-headers` only copy/configure header
+  # files, so we avoid compiling `cxx_experimental`/`llvmlibc` (which can't be
+  # built for an MSVC target with no hosted libc). We depend on the runtime
+  # subbuild's configure step so its build rules exist, then drive just those
+  # header targets via `cmake --build`. (`install-libc-headers` also generates
+  # the llvm-libc headers as a dependency; its install into the subbuild prefix
+  # is a harmless side effect.)
+  set(rtc_runtimes_bindir
+    "${CMAKE_BINARY_DIR}/runtimes/runtimes-${jit_stdlib_headers_target}-bins")
+  add_custom_target(rtc-runtime-headers
+    COMMAND ${CMAKE_COMMAND} --build ${rtc_runtimes_bindir}
+            --target generate-cxx-headers install-libc-headers
+    DEPENDS runtimes-${jit_stdlib_headers_target}-configure
+    COMMENT "Generating bundled libc++/llvm-libc headers for sycl-jit"
+    USES_TERMINAL)
+
+  # Windows only: a small set of MSVC-spelled declarations (e.g.
+  # `_aligned_malloc`, `struct _stat`) that some bundled headers expect on a
+  # Windows-MSVC target but llvm-libc does not provide. These augment rather than
+  # replace llvm-libc: each header `#include_next`s its llvm-libc counterpart.
+  # Staged into a separate `msvc-compat/` dir that precedes `include/` on the RTC
+  # `-isystem` search path (see `getBundledIncludeDirs` in DeviceCompilation.cpp).
+  # On Linux/macOS llvm-libc + libc++ are sufficient, so nothing is staged and
+  # the dir is absent (the RTC path skips it).
+  if(WIN32)
+    set(rtc_msvc_compat_src "${CMAKE_CURRENT_SOURCE_DIR}/rtc-libc-extra")
+    list(APPEND SYCL_JIT_PREPARE_RESOURCE_COMMANDS
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+              ${rtc_msvc_compat_src} ${SYCL_JIT_RESOURCE_INSTALL_DIR}/msvc-compat)
+  endif()
+endif()
 
 # This is very hacky and I don't quite know what I'm doing, but it's necessary
 # to have `resource.cpp` re-generated/re-built when some SYCL header changes.

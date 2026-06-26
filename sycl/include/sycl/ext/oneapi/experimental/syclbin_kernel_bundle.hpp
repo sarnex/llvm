@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
+#include <ios>
 
 #include <sycl/ext/oneapi/experimental/syclbin_properties.hpp>
 #include <sycl/ext/oneapi/properties.hpp>
@@ -22,7 +23,6 @@
 #if __has_include(<span>)
 #include <span>
 #endif
-
 namespace sycl {
 inline namespace _V1 {
 
@@ -90,13 +90,13 @@ get_kernel_bundle(const context &Ctxt, const std::vector<device> &Devs,
                   PropertyListT Props = {}) {
   std::vector<char> RawSYCLBINData;
   {
-    std::ifstream FileStream{Filename, std::ios::binary};
-    if (!FileStream.is_open())
-      throw std::ios_base::failure("Failed to open SYCLBIN file: " +
-                                   Filename.string());
-    RawSYCLBINData =
-        std::vector<char>{std::istreambuf_iterator<char>(FileStream),
-                          std::istreambuf_iterator<char>()};
+    // std::ifstream FileStream{Filename, std::ios::binary};
+    // if (!FileStream.is_open())
+    //   throw std::ios_base::failure("Failed to open SYCLBIN file: " +
+    //                                Filename.string());
+    //RawSYCLBINData =
+    //  std::vector<char>{std::istreambuf_iterator<char>(FileStream),
+    //                    std::istreambuf_iterator<char>()};
   }
   return experimental::get_kernel_bundle<State>(
       Ctxt, Devs, sycl::span<char>{RawSYCLBINData}, Props);

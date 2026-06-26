@@ -6,6 +6,19 @@ import subprocess
 import sys
 
 
+def host_runtime_triple():
+    """The LLVM target triple of the host, used to name the runtime target that
+    builds the libc++/llvm-libc headers bundled into sycl-jit. Must match the
+    `LLVM_HOST_TRIPLE` that CMake computes for the build."""
+    machine = platform.machine().lower()
+    arch = "x86_64" if machine in ("amd64", "x86_64") else machine
+    if sys.platform == "win32":
+        return "{}-pc-windows-msvc".format(arch)
+    if sys.platform == "darwin":
+        return "{}-apple-darwin".format(arch)
+    return "{}-unknown-linux-gnu".format(arch)
+
+
 def do_configure(args, passthrough_args):
     # Get absolute path to source directory
     abs_src_dir = os.path.abspath(
@@ -36,6 +49,14 @@ def do_configure(args, passthrough_args):
     if not args.disable_jit and sys.platform != "darwin":
         llvm_external_projects += ";sycl-jit"
         sycl_enable_jit = "ON"
+
+    # When the kernel JIT compiler is enabled, `sycl-jit` bundles a libc++ and
+    # llvm-libc *header* set into its shared library so that runtime SYCL
+    # device compilation does not depend on a system C/C++ toolchain being
+    # installed. We only need the (header-only) overlay: no libc++/libc runtime
+    # is built or linked. These headers are produced by the `default` runtime
+    # target (see handling of `runtime_targets` / `RUNTIMES_default_*` below).
+    jit_bundle_stdlib_headers = sycl_enable_jit == "ON"
 
     if args.llvm_external_projects:
         llvm_external_projects += ";" + args.llvm_external_projects.replace(",", ";")
@@ -223,7 +244,15 @@ def do_configure(args, passthrough_args):
                 ]
             )
 
-    if libclc_enabled:
+    # The libc++/llvm-libc headers bundled into sycl-jit are built as a *named*
+    # runtime target (the host triple). Named targets strip the
+    # `RUNTIMES_<target>_` prefix when forwarding to the runtimes subbuild, which
+    # the `default` target does not do for arbitrary LIBCXX_*/LIBC_* variables.
+    jit_runtimes_target = ""
+    if jit_bundle_stdlib_headers:
+        jit_runtimes_target = host_runtime_triple()
+
+    if libclc_enabled or jit_runtimes_target:
         for target in runtime_targets.split(";"):
             if target == "default":
                 continue
@@ -232,6 +261,55 @@ def do_configure(args, passthrough_args):
                     f"-DRUNTIMES_{target}_LLVM_ENABLE_RUNTIMES=libclc",
                 ]
             )
+
+        if jit_runtimes_target:
+            tgt = jit_runtimes_target
+            if tgt not in runtime_targets.split(";"):
+                runtime_targets += ";" + tgt
+            cmake_cmd.extend(
+                [
+                    # libcxx provides the C++ headers; libc (llvm-libc) provides
+                    # the C headers they need. No libcxxabi: it refuses to build
+                    # for MSVC targets and we never link a C++ ABI library.
+                    f"-DRUNTIMES_{tgt}_LLVM_ENABLE_RUNTIMES=libcxx;libc",
+                    # Route libc++'s C-library includes (e.g. <mbstate_t.h>) to
+                    # llvm-libc rather than probing for the platform's headers.
+                    f"-DRUNTIMES_{tgt}_RUNTIMES_USE_LIBC=llvm-libc",
+                    # llvm-libc: overlay mode (no runtime library), but opt in to
+                    # installing its generated *headers* so sycl-jit can bundle
+                    # them (see libc/include/CMakeLists.txt). Emit *all* function
+                    # declarations regardless of which entrypoints are enabled on
+                    # this target, since libc++ re-exports many of them (e.g.
+                    # `using ::wcschr`) and device code only needs declarations.
+                    f"-DRUNTIMES_{tgt}_LLVM_LIBC_FULL_BUILD=OFF",
+                    f"-DRUNTIMES_{tgt}_LIBC_INSTALL_OVERLAY_HEADERS=ON",
+                    f"-DRUNTIMES_{tgt}_LLVM_LIBC_ALL_HEADERS=ON",
+                    f"-DRUNTIMES_{tgt}_LIBCXX_INSTALL_HEADERS=ON",
+                    f"-DRUNTIMES_{tgt}_LIBCXX_ENABLE_SHARED=OFF",
+                    f"-DRUNTIMES_{tgt}_LIBCXX_ENABLE_STATIC=OFF",
+                    # Header-only, device-only: no C++ ABI library.
+                    f"-DRUNTIMES_{tgt}_LIBCXX_CXX_ABI=none",
+                    # Keep threads/filesystem (SYCL headers include <mutex>,
+                    # <atomic>, ... even on the device path). We never link the
+                    # library, so the only cost is a few more C declarations,
+                    # supplied by clang builtins plus the llvm-libc headers.
+                    #
+                    # Disable localization, which pulls in the platform's full
+                    # <locale.h> surface (lconv, _locale_t, ...) that a
+                    # header-only device toolchain has no use for.
+                    f"-DRUNTIMES_{tgt}_LIBCXX_ENABLE_LOCALIZATION=OFF",
+                    # Force-enable the features SYCL headers rely on even on the
+                    # device path: <mutex>/<atomic> (threads) and
+                    # char_traits<wchar_t>/std::wstring (wide characters, used by
+                    # <filesystem> on Windows). The llvm-libc flavor would
+                    # otherwise default these OFF. We never link, so only headers
+                    # matter; the backing C declarations come from llvm-libc.
+                    f"-DRUNTIMES_{tgt}_LIBCXX_ENABLE_THREADS=ON",
+                    f"-DRUNTIMES_{tgt}_LIBCXX_ENABLE_MONOTONIC_CLOCK=ON",
+                    f"-DRUNTIMES_{tgt}_LIBCXX_ENABLE_WIDE_CHARACTERS=ON",
+                ]
+            )
+
         cmake_cmd.extend(
             [
                 "-DLLVM_RUNTIME_TARGETS={}".format(runtime_targets),
