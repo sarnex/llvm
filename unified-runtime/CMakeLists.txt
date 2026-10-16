@@ -228,7 +228,11 @@ if(UR_ENABLE_TRACING)
         endif()
     endif()
 
-    if (MSVC)
+    if (MSVC AND UR_XPTI_USE_RELEASE_CRT)
+        # Set by parent builds that force UR targets onto the release CRT in
+        # every configuration.
+        set(TARGET_XPTI xpti)
+    elseif (MSVC)
         set(TARGET_XPTI $<IF:$<CONFIG:Release,RelWithDebInfo,MinSizeRel>,xpti,xptid>)
     else()
         set(TARGET_XPTI xpti)

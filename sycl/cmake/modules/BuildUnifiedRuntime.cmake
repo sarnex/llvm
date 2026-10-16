@@ -90,16 +90,32 @@ if(WIN32)
   set(UMF_BUILD_SHARED_LIBRARY OFF CACHE INTERNAL "Build UMF shared library")
   set(UMF_LINK_HWLOC_STATICALLY ON CACHE INTERNAL "static HWLOC")
 endif()
+# The UR targets get the release CRT below, so they need the release xpti too.
+# UR_STATIC_LOADER is only defined by UR itself (default ON) on a fresh build.
+if(WIN32 AND (NOT DEFINED UR_STATIC_LOADER OR UR_STATIC_LOADER))
+  set(UR_XPTI_USE_RELEASE_CRT ON)
+endif()
 add_subdirectory(${UNIFIED_RUNTIME_SOURCE_DIR} ${UR_INTREE_BINARY_DIR})
 
 # Restore original flags
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BAK}")
 
 if(WIN32 AND UR_STATIC_LOADER)
-  foreach(_ur_static_target ur_loader ur_common)
+  # Everything statically linked into sycl.dll must use the release CRT, even
+  # in Debug builds, and so must the in-tree targets that link those libraries.
+  # sycld.dll links the /MDd libraries from the debug sub-build.
+  foreach(_ur_static_target ur_loader ur_common
+      ur_adapter_level_zero ur_adapter_level_zero_v2 ur_adapter_opencl
+      ur_adapter_level_zero_common ze_loader level_zero_utils
+      urinfo ur_collector zello_world)
     if(TARGET ${_ur_static_target})
-      set_target_properties(${_ur_static_target} PROPERTIES
-        MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+      get_target_property(_ur_target_type ${_ur_static_target} TYPE)
+      get_target_property(_ur_target_imported ${_ur_static_target} IMPORTED)
+      if(NOT _ur_target_type STREQUAL "INTERFACE_LIBRARY" AND
+         NOT _ur_target_imported)
+        set_target_properties(${_ur_static_target} PROPERTIES
+          MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+      endif()
     endif()
   endforeach()
 endif()
